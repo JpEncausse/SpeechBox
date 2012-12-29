@@ -12,6 +12,10 @@ using System.Collections.Generic;
 using System.IO.Compression;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
+using System.Xml;
+using System.ServiceModel;
+using System.ServiceModel.Description;
+using System.ServiceModel.Syndication;
 using NAudio.Wave;
 using CUETools.Codecs;
 using CUETools.Codecs.FLAKE;
@@ -22,13 +26,23 @@ namespace net.encausse.SpeechBox {
 
     protected String directory = null;
     protected CultureInfo culture = null;
+    protected String url = null;
+    protected String rss = null;
 
-    public Speech2Text (String directory, String language) { 
+    public Speech2Text (String directory, String language, String url, String rss) { 
       this.directory = directory;
       if (!Directory.Exists(directory)) {
         throw new Exception("Directory do not exists: " + directory);
       }
+
+      this.url = url;
       this.culture = new System.Globalization.CultureInfo(language);
+     
+      if (rss != null) {
+        this.rss = rss;
+        LoadFeed(rss);
+      }
+
       WatchFolder(directory);
       ProcessDirectory(directory);
     }
@@ -52,16 +66,42 @@ namespace net.encausse.SpeechBox {
     }
 
     // ------------------------------------------
+    //   CALLBACK
+    // ------------------------------------------
+
+    public void CallBack (String speech, FileInfo file) {
+      // Debug Speech text
+      Debug.WriteLine("Speech: " + speech);
+
+      // Write to file
+      System.IO.File.WriteAllText(file.FullName + ".txt", speech, Encoding.UTF8);
+
+      // Send request URL
+      if (url != null) {
+        try {
+          var request = (HttpWebRequest)WebRequest.Create(url + speech);
+          var response = request.GetResponse();
+          response.Close();
+        }
+        catch (WebException ex) { Debug.Write(ex); }
+      }
+
+      // Add RSS Item
+      var millis = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
+      AddItem("SpeechItem", speech, "SP_" + millis, file.LastWriteTime);
+      SaveFeed(rss);
+    }
+
+    // ------------------------------------------
     //   M4A to TXT
     // ------------------------------------------
 
     public void ProcessDirectory(String directory){
       DirectoryInfo dir = new DirectoryInfo(directory);
       foreach (FileInfo f in dir.GetFiles("*.m4a")) {
-        if (File.Exists(f.FullName + ".txt")) { continue;  }
-        String speech = ProcessFile(f.FullName);
-        Debug.WriteLine("Speech: " + speech);
-        System.IO.File.WriteAllText(f.FullName + ".txt", speech, Encoding.UTF8);
+        String filename = f.FullName;
+        if (File.Exists(filename + ".txt")) { continue; }
+        CallBack(ProcessFile(filename), f);
       }
     }
 
@@ -225,5 +265,64 @@ namespace net.encausse.SpeechBox {
       }
     }
 
+    // ------------------------------------------
+    //   RSS FEED
+    // ------------------------------------------
+
+    private SyndicationFeed feed = null;
+    private int buffer = 10;
+
+    protected void LoadFeed (String path) {
+
+      if (!File.Exists(path)){
+        Debug.WriteLine("Feed: File not found (" + path + "). Build a new feed.");
+        feed = new SyndicationFeed("SpeechBox Feed", "A feed of SpeechBox", new Uri("http://127.0.0.1/"));
+        feed.Authors.Add(new SyndicationPerson("SpeechBox"));
+        feed.Categories.Add(new SyndicationCategory("Speech2Text"));
+        feed.Description = new TextSyndicationContent("A feed of speech to text item converted by SpeechBox");
+        feed.Items = new List<SyndicationItem>();
+ 
+        // Save the feed
+        SaveFeed(path);
+        return;
+      }
+
+      if (feed != null) { return; }
+      using (XmlReader reader = XmlReader.Create(path)){
+        feed = SyndicationFeed.Load(reader);
+      }
+      feed.Items = new List<SyndicationItem>(feed.Items);
+    }
+
+    protected void AddItem (String title, String content, String uid, DateTime dt) {
+      if (feed == null) {
+        Debug.WriteLine("Feed: no feed available");
+        return;
+      }
+
+      // Date/Time 
+      if (dt == null) {
+        dt = DateTime.Now; 
+      }
+
+      var uri = new Uri("http://127.0.0.1");
+      SyndicationItem item = new SyndicationItem(title, content, uri, uid, dt);
+      List<SyndicationItem> items = (List<SyndicationItem>)feed.Items;
+      items.Insert(0,item);
+      if (items.Count > buffer) {
+        items.RemoveAt(buffer);
+      }
+    }
+
+    protected void SaveFeed(String path) {
+      if (feed == null) {
+        Debug.WriteLine("Feed: no feed available");
+        return;
+      }
+
+      using (XmlWriter writer = XmlWriter.Create(path)){
+        feed.SaveAsRss20(writer);
+      }
+    } 
   }
 }

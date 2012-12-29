@@ -26,9 +26,14 @@ namespace net.encausse.SpeechBox
       bool help = false;
       String directory = null;
       String language = "fr-FR";
+      String url = null;
+      String rss = null;
+
       var p = new OptionSet() {
         { "d|directory=", "the {DIRECTORY} of M4A.", v => directory = v },
         { "l|lang=", "the {LANGUAGE} Culture. Default is fr-FR", v => language = v },
+        { "url=", "the {URL} to send text. (ie http://127.0.0.1/do?text=)", v => url = v },
+        { "rss=", "the {path/to/feed.rss} of speech RSS feed.", v => rss = v },
         { "h|help",  "show this message and exit", v => help = v != null },
       };
 
@@ -64,7 +69,7 @@ namespace net.encausse.SpeechBox
 				pi.Display();
 
         // Start Speech2Text
-        Speech2Text s2t = new Speech2Text(directory, language);
+        Speech2Text s2t = new Speech2Text(directory, language, url, rss);
 
 				// Make sure the application runs!
 				Application.Run();
