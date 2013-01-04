@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyDescription("System Tray Utility Application to perform Speech to Text on a given DropVox")]
 [assembly: AssemblyConfiguration("")] 
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("SpeechBox v1.1")]
+[assembly: AssemblyProduct("SpeechBox v1.2")]
 [assembly: AssemblyCopyright("Copyright © 2012. All Rights reserved.")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]

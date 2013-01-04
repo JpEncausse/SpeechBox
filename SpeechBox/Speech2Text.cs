@@ -72,6 +72,7 @@ namespace net.encausse.SpeechBox {
     public void CallBack (String speech, FileInfo file) {
       // Debug Speech text
       Debug.WriteLine("Speech: " + speech);
+      if (speech == null) { return; }
 
       // Write to file
       System.IO.File.WriteAllText(file.FullName + ".txt", speech, Encoding.UTF8);
@@ -106,6 +107,9 @@ namespace net.encausse.SpeechBox {
     }
 
     public String ProcessFile (String file) {
+
+      Debug.WriteLine("ProcessFile: " + file);
+      String text = null;
 
       using (var reader = new MediaFoundationReader(file))
       using (var wav16 = new WaveFormatConversionStream(new WaveFormat(16000, 16, 1), reader)) 
@@ -144,9 +148,17 @@ namespace net.encausse.SpeechBox {
 
         var wavreader = new WAVReader(null, stream, new AudioPCMConfig(tmp.WaveFormat.BitsPerSample, tmp.WaveFormat.Channels, tmp.WaveFormat.SampleRate));
         wavreader.Position = 0;
-        var response = Recognize("https://www.google.com/speech-api/v1/recognize?xjerr=1&client=chromium&maxresults=2", culture, wavreader);
-        return response;
+        text = Recognize("https://www.google.com/speech-api/v1/recognize?xjerr=1&client=chromium&maxresults=2", culture, wavreader);
+
+        // Debug
+        // var wavreader = new WAVReader(null, stream, new AudioPCMConfig(tmp.WaveFormat.BitsPerSample, tmp.WaveFormat.Channels, tmp.WaveFormat.SampleRate));
+        // wavreader.Position = 0;
+        // using (FileStream fileStream = new FileStream(file+".wav", FileMode.CreateNew)) {
+        //  ConvertToFlac(wavreader, fileStream);
+        // } 
+
       }
+      return text;
     }
 
     // ------------------------------------------
@@ -182,11 +194,11 @@ namespace net.encausse.SpeechBox {
 
     private void ConfigureRequest (HttpWebRequest request) {
       request.KeepAlive = true;
-      request.SendChunked = true;
+      request.SendChunked = false;
       request.ContentType = "audio/x-flac; rate=16000";
       request.UserAgent = "Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.874.121 Safari/535.2";
       request.Headers.Set(HttpRequestHeader.AcceptEncoding, "gzip,deflate,sdch");
-      request.Headers.Set(HttpRequestHeader.AcceptLanguage, "en-GB,en-US;q=0.8,en;q=0.6");
+      request.Headers.Set(HttpRequestHeader.AcceptLanguage, "fr-FR,en-US;q=0.8,en;q=0.6");
       request.Headers.Set(HttpRequestHeader.AcceptCharset, "ISO-8859-1,utf-8;q=0.7,*;q=0.3");
       request.Method = "POST";
     }
@@ -202,14 +214,19 @@ namespace net.encausse.SpeechBox {
       ConvertToFlac(wavReader, requestStream);
 
       // Parse Response
-      var response = request.GetResponse();
-      var match = "";
-      using (var responseStream = response.GetResponseStream())
-      using (var zippedStream = new GZipStream(responseStream, CompressionMode.Decompress)) {
-        var json = Deserialise<RecognizedText>(zippedStream);
-        match = json.Hypotheses[0].Utterance;
+      String match = null;
+      try {
+        using (WebResponse response = request.GetResponse())
+        using (var responseStream = response.GetResponseStream())
+        using (var zippedStream = new GZipStream(responseStream, CompressionMode.Decompress)) {
+          var json = Deserialise<RecognizedText>(zippedStream);
+          match = json.Hypotheses[0].Utterance;
+        }
       }
-      response.Close();
+      catch (WebException ex) {
+        Debug.WriteLine("Error: ", ex.Message);
+      }
+      
       return match;
     }
 
@@ -252,7 +269,7 @@ namespace net.encausse.SpeechBox {
         if (audioSource.PCM.SampleRate != 16000) {
           throw new InvalidOperationException("Incorrect frequency - WAV file must be at 16 KHz.");
         }
-        var buff = new AudioBuffer(audioSource, 0x10000);
+        var buff = new AudioBuffer(audioSource, 0x20000);
         var flakeWriter = new FlakeWriter(null, destinationStream, audioSource.PCM);
         flakeWriter.CompressionLevel = 8;
         while (audioSource.Read(buff, -1) != 0) {
